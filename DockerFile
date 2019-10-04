@@ -1,0 +1,50 @@
+FROM ubuntu:18.04
+
+RUN set -eux \
+# Refer to http://linuxcommand.org/lc3_man_pages/seth.html for set options.
+# -e  Exit immediately if a command exits with a non-zero status.
+# -u  Treat unset variables as an error when substituting.
+# -x  Print commands and their arguments as they are executed.
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
+        wget \
+        ca-certificates \
+        fontconfig \
+        libfreetype6 \
+    && apt clean;
+
+ENV LANG C.UTF-8
+ENV JDK_HOME /opt/java/adoptopenjdk-11
+ENV JRE_HOME /opt/java/adoptopenjre-11
+
+ENV JAVA_VERSION 11.0.4
+ENV JAVA_BUILD_NUMBER 11
+ENV SHA256HASH 90c33cf3f2ed0bd773f648815de7347e69cfbb3416ef3bf41616ab1c4aa0f5a8
+ENV JDK_BASE_URL https://github.com/AdoptOpenJDK/openjdk11-binaries/releases/download/jdk-11.0.4%2B11/OpenJDK11U-jdk_x64_linux_hotspot_11.0.4_11.tar.gz
+
+ENV JDK_SHA256_HASH_URL https://github.com/AdoptOpenJDK/openjdk11-binaries/releases/download/jdk-11.0.4%2B11/OpenJDK11U-jdk_x64_linux_hotspot_11.0.4_11.tar.gz.sha256.txt
+
+RUN set -eux \
+    && wget -O openjdk.tgz "${JDK_BASE_URL}" --progress=dot:giga \
+	&& wget -O sha256hashFile "${JDK_SHA256_HASH_URL}" \
+    && echo "$SHA256HASH */openjdk.tgz" | sha256sum -c -
+
+#Checksum   https://github.com/AdoptOpenJDK/openjdk11-binaries/releases/download/jdk-11.0.4%2B11/OpenJDK11U-jdk_x64_linux_hotspot_11.0.4_11.tar.gz.sign
+#JDK 
+
+# checksum https://github.com/AdoptOpenJDK/openjdk11-binaries/releases/download/jdk-11.0.4%2B11/OpenJDK11U-jre_x64_linux_hotspot_11.0.4_11.tar.gz.sha256.txt
+# jre https://github.com/AdoptOpenJDK/openjdk11-binaries/releases/download/jdk-11.0.4%2B11/OpenJDK11U-jre_x64_linux_hotspot_11.0.4_11.tar.gz
+
+# ENV ADOPT_OPEN_JDK_GPG_KEY_URL https://adoptopenjdk.jfrog.io/adoptopenjdk/api/gpg/key/public
+
+# ENV ADOPT_OPEN_JDK_DEP_REPO_URL https://adoptopenjdk.jfrog.io/adoptopenjdk/deb/
+
+# RUN set -eux; \
+#     && wget -qO - $ADOPT_OPEN_JDK_GPG_KEY_URL | sudo apt-key add - \
+#     && add-apt-repository --yes $ADOPT_OPEN_JDK_DEP_REPO_URL \
+#     && apt-get-update \
+#     && apt-get install software-properties-common --no-install-recommends \
+#     && apt-get install adoptopenjdk-11-hotspot=11.0.4+11-2 --no-install-recommends \
+#     && apt clean
+
+CMD ["/bin/bash"]
