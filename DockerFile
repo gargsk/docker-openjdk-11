@@ -1,50 +1,75 @@
 FROM ubuntu:18.04
-
+LABEL Name AdoptOpenJDK - JRE
+LABEL Version 1.0.0
+LABEL Architecture x86_64
 RUN set -eux \
-# Refer to http://linuxcommand.org/lc3_man_pages/seth.html for set options.
-# -e  Exit immediately if a command exits with a non-zero status.
-# -u  Treat unset variables as an error when substituting.
-# -x  Print commands and their arguments as they are executed.
+    # Refer to http://linuxcommand.org/lc3_man_pages/seth.html for set options.
+    # -e  Exit immediately if a command exits with a non-zero status.
+    # -u  Treat unset variables as an error when substituting.
+    # -x  Print commands and their arguments as they are executed.
     && apt-get update \
     && apt-get install -y --no-install-recommends \
-        wget \
-        ca-certificates \
-        fontconfig \
-        libfreetype6 \
+    wget \
+    ca-certificates \
+    fontconfig \
+    libfreetype6 \
     && apt clean;
 
 ENV LANG C.UTF-8
-ENV JDK_HOME /opt/java/adoptopenjdk-11
-ENV JRE_HOME /opt/java/adoptopenjre-11
-
-ENV JAVA_VERSION 11.0.4
-ENV JAVA_BUILD_NUMBER 11
-ENV SHA256HASH 90c33cf3f2ed0bd773f648815de7347e69cfbb3416ef3bf41616ab1c4aa0f5a8
-ENV JDK_BASE_URL https://github.com/AdoptOpenJDK/openjdk11-binaries/releases/download/jdk-11.0.4%2B11/OpenJDK11U-jdk_x64_linux_hotspot_11.0.4_11.tar.gz
-
-ENV JDK_SHA256_HASH_URL https://github.com/AdoptOpenJDK/openjdk11-binaries/releases/download/jdk-11.0.4%2B11/OpenJDK11U-jdk_x64_linux_hotspot_11.0.4_11.tar.gz.sha256.txt
+ENV JAVA_VERSION='11.0.4'
+ENV JAVA_BUILD_NUMBER='11'
+ENV JAVA_HOME='/opt/java/adoptopenjre-11'
+ENV PATH="${JAVA_HOME}/bin:$PATH"
+ENV ADOPTOPENJDK_BASE_URL='https://github.com/AdoptOpenJDK/openjdk11-upstream-binaries/releases/download/jdk-11.0.4+11/'
+ENV JRE_URL_SUFFIX='OpenJDK11U-jre_x64_linux_11.0.4_11.tar.gz'
 
 RUN set -eux \
-    && wget -O openjdk.tgz "${JDK_BASE_URL}" --progress=dot:giga \
-	&& wget -O sha256hashFile "${JDK_SHA256_HASH_URL}" \
-    && echo "$SHA256HASH */openjdk.tgz" | sha256sum -c -
+    && savedAptMark="$(apt-mark showmanual)" \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
+    gnupg \
+    dirmngr \
+    \
+    && wget -O adoptopenjdk-jre_x64_linux_11.0.4_11.tgz "${ADOPTOPENJDK_BASE_URL}${JRE_URL_SUFFIX}" --progress=dot:giga \
+    && wget -O adoptopenjdk-jre_x64_linux_11.0.4_11.tgz.asc "${ADOPTOPENJDK_BASE_URL}${JRE_URL_SUFFIX}.sign" \
+    \
+    && export GNUPGHOME="$(mktemp -d)" \
+    && gpg --batch --keyserver na.pool.sks-keyservers.net --recv-keys CA5F11C6CE22644D42C6AC4492EF8D39DC13168F \
+    && gpg --batch --keyserver na.pool.sks-keyservers.net --recv-keys EAC843EBD3EFDB98CC772FADA5CD6035332FA671 \
+    && gpg --batch --list-sigs --keyid-format 0xLONG CA5F11C6CE22644D42C6AC4492EF8D39DC13168F \
+    | tee /dev/stderr \
+    | grep '0xA5CD6035332FA671' \
+    | grep 'Andrew Haley' \
+    && gpg --batch --verify adoptopenjdk-jre_x64_linux_11.0.4_11.tgz.asc adoptopenjdk-jre_x64_linux_11.0.4_11.tgz \
+    && gpgconf --kill all \
+    && rm -rf "$GNUPGHOME" \
+    && mkdir -p "$JAVA_HOME" \
+    && tar --extract --file adoptopenjdk-jre_x64_linux_11.0.4_11.tgz --directory "$JAVA_HOME" --strip-components 1 \
+    && rm adoptopenjdk-jre_x64_linux_11.0.4_11.tgz \
+    && apt-mark auto '.*' > /dev/null \
+    && [ -z "$savedAptMark" ] || apt-mark manual $savedAptMark \
+    && apt-get purge -y --auto-remove -o APT::AutoRemove::RecommendsImportant=false \
+    && apt clean \
+    && rm -rf /var/lib/apt/lists/* \
+    { \
+    echo '#!/usr/bin/env bash'; \
+    echo 'set -Eeuo pipefail'; \
+    echo 'if ! [ -d "$JAVA_HOME" ]; then echo >&2 "error: missing JAVA_HOME environment variable"; exit 1; fi'; \
+    echo 'cacertsFile=; for f in "$JAVA_HOME/lib/security/cacerts" "$JAVA_HOME/jre/lib/security/cacerts"; do if [ -e "$f" ]; then cacertsFile="$f"; break; fi; done'; \
+    echo 'if [ -z "$cacertsFile" ] || ! [ -f "$cacertsFile" ]; then echo >&2 "error: failed to find cacerts file in $JAVA_HOME"; exit 1; fi'; \
+    echo 'trust extract --overwrite --format=java-cacerts --filter=ca-anchors --purpose=server-auth "$cacertsFile"'; \
+    } > /etc/ca-certificates/update.d/docker-openjdk; \
+    chmod +x /etc/ca-certificates/update.d/docker-openjdk; \
+    /etc/ca-certificates/update.d/docker-openjdk; \
+    \
+    mkdir -p /etc/ssl/certs/java/; \
+    mv "$JAVA_HOME"/lib/security/cacerts /etc/ssl/certs/java/cacerts; \
+    ln -s /etc/ssl/certs/java/cacerts "$JAVA_HOME"/lib/security/cacerts; \
+    find "$JAVA_HOME/lib" -name '*.so' -exec dirname '{}' ';' | sort -u > /etc/ld.so.conf.d/docker-openjdk.conf; \
+    ldconfig;
 
-#Checksum   https://github.com/AdoptOpenJDK/openjdk11-binaries/releases/download/jdk-11.0.4%2B11/OpenJDK11U-jdk_x64_linux_hotspot_11.0.4_11.tar.gz.sign
-#JDK 
+RUN set -eux \
+    && echo "${JAVA_HOME}" \
+    && java --version
 
-# checksum https://github.com/AdoptOpenJDK/openjdk11-binaries/releases/download/jdk-11.0.4%2B11/OpenJDK11U-jre_x64_linux_hotspot_11.0.4_11.tar.gz.sha256.txt
-# jre https://github.com/AdoptOpenJDK/openjdk11-binaries/releases/download/jdk-11.0.4%2B11/OpenJDK11U-jre_x64_linux_hotspot_11.0.4_11.tar.gz
-
-# ENV ADOPT_OPEN_JDK_GPG_KEY_URL https://adoptopenjdk.jfrog.io/adoptopenjdk/api/gpg/key/public
-
-# ENV ADOPT_OPEN_JDK_DEP_REPO_URL https://adoptopenjdk.jfrog.io/adoptopenjdk/deb/
-
-# RUN set -eux; \
-#     && wget -qO - $ADOPT_OPEN_JDK_GPG_KEY_URL | sudo apt-key add - \
-#     && add-apt-repository --yes $ADOPT_OPEN_JDK_DEP_REPO_URL \
-#     && apt-get-update \
-#     && apt-get install software-properties-common --no-install-recommends \
-#     && apt-get install adoptopenjdk-11-hotspot=11.0.4+11-2 --no-install-recommends \
-#     && apt clean
-
-CMD ["/bin/bash"]
+CMD ["jshell"]
