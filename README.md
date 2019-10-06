@@ -1,1 +1,2 @@
-# docker-openjdk-11
+DockerFile
+AdoptOpenJdk-JRE-11
